@@ -6,9 +6,6 @@ from pathlib import Path
 
 
 def initalize(path: str) -> None:
-    if not Path(path).exists():
-        raise FileNotFoundError(f"Nie ma pliku z lokalizacja: {path}")
-
     with sqlite3.connect(path) as con:
         con.execute(
             "CREATE TABLE IF NOT EXISTS dane (temperatura, cisnienie, wilgotnosc)"

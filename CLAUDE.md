@@ -1,120 +1,75 @@
-# CLAUDE.md
+# CLAUDE.md — projekt Czujnik-arduino
 
-Plik kontekstowy dla Claude. Zawiera informacje o moim stacku technologicznym, projektach i preferencjach pracy.
-
----
-
-## 👤 O mnie
-
-**Poziom umiejętności:** Prawie średniozaawansowany (powyżej początkującego)
-
-Znam i swobodnie używam:
-- OOP (klasy, konstruktory, dziedziczenie, hermetyzacja)
-- Funkcje, struktury kontrolne, składnia kilku języków
-- Pracę w terminalu i z bibliotekami zewnętrznymi
-
-Aktualnie się rozwijam w kierunku poznawania nowych bibliotek oraz łączenia hardware'u z softwarem.
+Kontekst projektu dla Claude. Preferencje ogólne (język, styl, poziom wyjaśnień) są w globalnym `~/.claude/CLAUDE.md` — tutaj tylko to co specyficzne dla tego projektu.
 
 ---
 
-## 💻 Środowisko pracy
+## Cel projektu
 
-| Element | Wartość |
-|---------|---------|
-| OS | Windows 11 |
-| IDE | VS Code |
-| Język komunikacji | PL + EN (terminy techniczne po angielsku) |
+Stacja pomiarowa parametrów otoczenia łącząca hardware z softwarem:
 
----
-
-## 🛠️ Stack technologiczny
-
-### C++ — mikrokontrolery
-- **Arduino** (głównie)
-- **ESP32**
-
-Zastosowania: obsługa sensorów, komunikacja przez Serial, sterowanie I/O.
-
-### Python — software, GUI, integracje
-Aktywnie używane biblioteki:
-- `pyserial` — komunikacja z mikrokontrolerami
-- `tkinter` — GUI
-- `pygame` — GUI z animacjami / grafiką
-- `numpy` — analiza i przetwarzanie danych
-- `requests` — komunikacja HTTP
-- `anthropic` — integracja z LLM (Claude API)
-
-Zastosowania: software desktop, GUI z animacjami, analiza danych z mikrokontrolerów, projekty z LLM.
-
-### MicroPython
-Używam okazjonalnie do projektów, gdzie Python działa bezpośrednio na mikrokontrolerze.
-
-### Java — mój najmocniejszy język (obecnie nieaktywny)
-- **Spigot/Bukkit API** — pluginy Minecraft
-- Projekty terminalowe
-- Proste aplikacje GUI z JFrame
-
-> 💡 Java to mój pierwszy język i czuję się w niej najpewniej. Porównania konceptów Python/C++ ↔ Java są dla mnie pomocne i ułatwiają zapamiętywanie.
-
----
-
-## 🚧 Aktualny projekt
-
-**Stacja pomiarowa parametrów otoczenia**
-
-**Hardware (Arduino + C++):**
-- Pomiar: temperatura, ciśnienie, wilgotność
-- Wysyłanie danych przez Serial do komputera
-
-**Software (Python):**
-- Odbiór danych z portu szeregowego (`pyserial`)
-- Analiza odebranych parametrów
-- GUI z animacjami wizualizującymi parametry środowiskowe
-
-**Architektura ogólna:**
 ```
-[Sensors] → [Arduino C++] → [Serial] → [Python software] → [GUI z animacjami]
+[DHT22 + BMP280] → [Arduino Uno / ATmega328P] → [Serial CSV] → [Python desktop] → [tkinter GUI + SQLite]
+```
+
+Dane: **temperatura** (float, °C), **ciśnienie** (float, hPa), **wilgotność** (int, 0–100%).
+
+---
+
+## Struktura plików
+
+```
+src/
+├── main.cpp          # Arduino C++ — odczyt sensorów, wysyłanie przez Serial
+├── app.py            # główna pętla GUI (tkinter), serial reader w osobnym wątku
+├── data_structs.py   # modele Pydantic — Struct, StructUpdate
+├── data.py           # operacje SQLite — initialize(), get_con(), put_data(), get_data()
+└── config.py         # ładowanie config.json — klasa Config (Pydantic), load_config()
+config.json           # ścieżki i parametry: db_path, com_port, baud_rate
 ```
 
 ---
 
-## ⚙️ Preferencje pracy z Claude
+## Architektura — kluczowe decyzje
 
-### Język odpowiedzi
-- Polski jako podstawa
-- Terminy techniczne po angielsku (np. *loop*, *callback*, *thread*, *exception handling*)
-- Nie tłumacz na siłę nazw bibliotek/funkcji
+### Serial
+- Format danych z Arduino: CSV `temperatura,wilgotnosc,cisnienie\n`
+- `serial_reader()` działa w osobnym `daemon thread` — blokujące `readline()` nie blokuje GUI
+- Dane przechodzą przez `queue.Queue` (thread-safe) do `update()` w event loop tkinter
 
-### Poziom wyjaśnień
-- ✅ **Pomijaj** podstawy OOP, składnię, podstawowe konstrukcje
-- ✅ **Wyjaśniaj** koncepty zaawansowane (np. dekoratory, metaclasses, asynchroniczność, wzorce projektowe, niskopoziomowe rzeczy w C++)
-- Zakładaj że umiem czytać kod i znam dokumentację — nie tłumacz oczywistego
+### Config
+- `config.json` — jedno miejsce dla wszystkich parametrów runtime
+- Import stylem `from config import load_config` (nie `import config`)
+- Instancja `Config` tworzona raz przy starcie: `configuration = load_config()`
 
-### Komentarze w kodzie
-- Tylko w miejscach **trudniejszych dla mnie** (nie wszędzie)
-- Po polsku, ale z angielskimi pojęciami technicznymi
-- Bez "oczywistych" komentarzy typu `# pętla for`
+### SQLite
+- Połączenie (`get_con`) zwraca plain `sqlite3.Connection` — żyje przez cały czas działania apki
+- Schemat tabeli: `dane (temperatura REAL, cisnienie REAL, wilgotnosc INTEGER, data_pomiaru TEXT)`
+- `data_pomiaru` przechowywany jako ISO string (`datetime.datetime.now().isoformat()`)
+- Przy odczycie wierszy używać `sqlite3.Row` jako `row_factory` żeby możliwe było `**dict(row)`
 
-### Styl odpowiedzi
-- Kod + krótkie wyjaśnienie kluczowych fragmentów
-- Bez nadmiernego rozwlekania, ale bez bycia zbyt zwięzłym przy zaawansowanych tematach
-
-### Porównania do Javy
-- Tak, chętnie przy konceptach które mają bezpośredni odpowiednik
-- Pomaga mi to budować mosty między językami i utrwalać wiedzę
-- Przykłady: interfaces vs Protocols (Python), `final` vs `const`, wskaźniki w C++ vs referencje w Javie
-
-### Sugestie rozwojowe
-- ✅ Proaktywnie sugeruj ćwiczenia, podejścia, wzorce projektowe, biblioteki warte poznania
-- ✅ Wskazuj gdy coś można zrobić "w bardziej profesjonalny sposób"
-- ✅ Zwracaj uwagę na good practices (clean code, separation of concerns, error handling)
-- Traktuj naukę jako część procesu — nie tylko "rozwiąż problem"
+### Modele Pydantic
+- `Struct` — dane do zapisu (wszystkie pola wymagane)
+- `StructUpdate` — dane do wyszukiwania (temperatura/cisnienie/wilgotnosc opcjonalne + wymagane `data_pomiaru: str`)
+- `Optional[X]` zawsze z `= None`, `Field` z `default=None` gdy Optional
 
 ---
 
-## 📋 Czego unikać
+## Stan Arduino (main.cpp)
 
-- Tłumaczenia rzeczy podstawowych (czym jest klasa, jak działa pętla)
-- Komentarzy do każdej linijki kodu
-- Czysto polskich tłumaczeń terminów technicznych ("wątek wykonawczy" zamiast *thread*)
-- Odpowiedzi typu "to zależy" bez konkretu — preferuję konkretną rekomendację z uzasadnieniem
+Szkielet — do zaimplementowania:
+- `Serial.begin(9600)` w `setup()`
+- Inicjalizacja DHT22 i BMP280 w `setup()`
+- Odczyt i wysyłka CSV w `loop()` z kontrolą częstotliwości przez `millis()` (nie `delay()`)
+
+Biblioteki: `DHT` (temperatura + wilgotność), `Adafruit_BMP280` (ciśnienie).
+Ograniczenia Uno: 2 KB SRAM, 32 KB flash — bez dynamicznych alokacji, bez String w pętli.
+
+---
+
+## Znane TODO w kodzie
+
+- `serial_reader()`: brak obsługi `UnicodeDecodeError` i logiki reconnect po resecie Arduino
+- `parse_line()`: błędne linie są cicho ignorowane — warto logować
+- `update()` w app.py: wzorzec `empty() + get_nowait()` to TOCTOU — poprawnie: `try/except queue.Empty`
+- `initalize()` w data.py: literówka w nazwie funkcji (brakuje `i`)
