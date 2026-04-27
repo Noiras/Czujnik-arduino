@@ -1,17 +1,23 @@
 import tkinter as tk
 import tkinter.font as tkfont
-import ttkbootstrap as ttk
-from ttkbootstrap import Style
 import threading  # odpowiednik java.lang.Thread
 import queue  # thread-safe kolejka do przekazywania danych między wątkami (jak BlockingQueue w Javie)
 import serial
+import data
+import os
+from config import load_config
 
+config = load_config()
 
 # stałe konfiguracyjne w jednym miejscu — zmiana portu/baud rate tylko tutaj
-COM_PORT = "COM5"
-BAUD_RATE = 9600
+COM_PORT = config.com_port
+BAUD_RATE = config.baud_rate
+DB_PATH = config.db_path
 TEMP_MAX = 40.0
 TEMP_CIRCLE_RAD = 70
+
+data.initalize(BAUD_RATE)
+con = data.get_con(DB_PATH)
 
 
 # model danych oddzielony od widoku — przechowuje aktualne wartości sensorów
@@ -29,7 +35,6 @@ class Window:
         self.data = (
             data  # referencja do SensorData — widok czyta dane stąd, nie z globals
         )
-        self.style = Style(theme="darkly")
         self.canvas = tk.Canvas(self.root, bg="#2E2E2E", height=height, width=width)
 
         self.root.title("Czujniki w pokoju")
@@ -37,7 +42,7 @@ class Window:
             f"{width}x{height}"
         )  # kolejność: width x height (poprzednio było odwrotnie)
 
-        self.screen = ttk.Frame(self.root, padding=20)
+        self.screen = tk.Frame(self.root, padx=20, pady=20)
         self.screen.pack(expand=False, fill="both")
 
         self.canvas.create_text(200, 60, text="Temperatura:", font=font, fill="#FFFFFF")
@@ -143,10 +148,12 @@ def serial_reader(data_queue):
     try:
         s = serial.Serial(COM_PORT, BAUD_RATE)
         while True:
-            line = s.readline().decode("utf-8").strip()
+            line = s.readline().decode("utf-8").split(",")
             data_queue.put(line)
-    except serial.SerialException as e:
+            data.put_data(con, line)
+    except Exception as e:
         print(f"Błąd seriala: {e}")
+
     # TODO: dodać obsługę UnicodeDecodeError osobno (uszkodzone bajty z Arduino)
     # TODO: dodać logikę ponownego połączenia po utracie portu (np. Arduino reset)
 
@@ -211,31 +218,3 @@ def update():
 threading.Thread(target=serial_reader, args=(serial_queue,), daemon=True).start()
 root.after(10, update)
 root.mainloop()  # przekazuje kontrolę do event loop tkinter — odpowiednik SwingUtilities w Javie
-
-
-# =============================================================================
-# NOTATKA SESJI — koncepty zdobyte podczas pracy nad animacjami
-# =============================================================================
-#
-# canvas.create_arc(x0, y0, x1, y1, start=..., extent=..., style=..., width=..., outline=...)
-#   - x0,y0,x1,y1 to bounding box pełnej elipsy, NIE punkty łuku
-#   - start i extent w STOPNIACH (nie radianach!) — częsty błąd
-#   - extent to rozmiar kąta segmentu, nie kąt końcowy
-#   - style=tk.ARC rysuje samą linię łuku (bez wypełnienia do środka)
-#
-# GRADIENT przez wiele segmentów arc:
-#   - dzielisz łuk na N małych segmentów, każdy z osobnym kolorem z lerp()
-#   - extent = arc_length + 1 (mały overlap) eliminuje wcięcia między segmentami
-#   - canvas.delete(tag) przed rysowaniem — bez tego segmenty się akumulują
-#
-# LERP koloru (green → red):
-#   t = max(0.0, min(1.0, value / max_value))   # clamp do [0,1]
-#   r = int(r_start + (r_end - r_start) * t)
-#
-# NORMALIZACJA zakresu wartości (do paska postępu):
-#   t = (value - min_val) / (max_val - min_val)  # działa dla dowolnego zakresu
-#   progress = tuple(s + (e - s) * t for s, e in zip(start_point, end_point))
-#   px, py = progress  # unpack przed użyciem w canvas
-#
-# range(N) == range(0, N) — start domyślnie 0
-# args=(x,) w Thread — przecinek obowiązkowy, inaczej nie jest tuple

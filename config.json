@@ -1,0 +1,5 @@
+{
+    "db_path": "data/data.db",
+    "com_port": "COM5",
+    "baud_rate": 9600
+}
