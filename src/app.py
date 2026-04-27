@@ -16,7 +16,7 @@ DB_PATH = config.db_path
 TEMP_MAX = 40.0
 TEMP_CIRCLE_RAD = 70
 
-data.initalize(BAUD_RATE)
+data.initalize(DB_PATH)
 con = data.get_con(DB_PATH)
 
 
