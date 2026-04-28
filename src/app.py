@@ -6,6 +6,7 @@ import serial
 import data
 import os
 from config import load_config
+from data_structs import Struct
 
 config = load_config()
 
@@ -29,8 +30,77 @@ class SensorData:
         self.pressure = 1020.0
 
 
+class RoundedButton:
+    def __init__(self, parent, cfg, command):
+        self._color = cfg.color
+        self._color_active = cfg.color_active
+        self._command = command
+
+        self._canvas = tk.Canvas(
+            parent,
+            width=cfg.width,
+            height=cfg.height,
+            bg=parent["bg"],
+            highlightthickness=0,
+        )
+
+        points = self._make_points(2, 2, cfg.width - 4, cfg.height - 4, cfg.radius)
+        self._rect = self._canvas.create_polygon(
+            points, smooth=True, fill=cfg.color, outline=""
+        )
+        self._label = self._canvas.create_text(
+            cfg.width // 2,
+            cfg.height // 2,
+            text=cfg.text,
+            fill=cfg.text_color,
+            font=(cfg.font_family, cfg.font_size),
+        )
+
+        self._canvas.bind("<ButtonPress-1>", self._on_press)
+        self._canvas.bind("<ButtonRelease-1>", self._on_release)
+
+    @staticmethod
+    def _make_points(x, y, w, h, r):
+        return [
+            x + r,
+            y,
+            x + w - r,
+            y,
+            x + w,
+            y,
+            x + w,
+            y + r,
+            x + w,
+            y + h - r,
+            x + w,
+            y + h,
+            x + w - r,
+            y + h,
+            x + r,
+            y + h,
+            x,
+            y + h,
+            x,
+            y + h - r,
+            x,
+            y + r,
+            x,
+            y,
+        ]
+
+    def _on_press(self, _):
+        self._canvas.itemconfig(self._rect, fill=self._color_active)
+
+    def _on_release(self, _):
+        self._canvas.itemconfig(self._rect, fill=self._color)
+        self._command()
+
+    def pack(self, **kw):
+        self._canvas.pack(**kw)
+
+
 class Window:
-    def __init__(self, width, height, root, data):
+    def __init__(self, width, height, root, data, cfg, on_save):
         self.root = root
         self.data = (
             data  # referencja do SensorData — widok czyta dane stąd, nie z globals
@@ -47,6 +117,9 @@ class Window:
 
         self.canvas.create_text(200, 60, text="Temperatura:", font=font, fill="#FFFFFF")
         self.canvas.pack()
+
+        self.save_btn = RoundedButton(self.canvas, cfg.save_button, on_save)
+        self.canvas.create_window(400, 500, window=self.save_btn._canvas)
 
     def draw_animation(self, center, rad: float, data: float):
         cx, cy = center
@@ -174,10 +247,20 @@ serial_queue = (
     queue.Queue()
 )  # thread-safe — serial_reader pisze, update() czyta bez race condition
 
+
+def save_to_db():
+    struct = Struct(
+        temperatura=sensor_data.temp,
+        cisnienie=sensor_data.pressure,
+        wilgotnosc=int(sensor_data.humidity),
+    )
+    data.put_data(con, struct)
+
+
 root = tk.Tk()
 # font musi być stworzony po tk.Tk() — tkinter wymaga aktywnego root przed tworzeniem fontów
 font = tkfont.Font(family="Cascadia Mono", size=28)
-w = Window(800, 800, root=root, data=sensor_data)
+w = Window(800, 800, root=root, data=sensor_data, cfg=config, on_save=save_to_db)
 
 
 def update():
@@ -187,9 +270,7 @@ def update():
     while not serial_queue.empty():
         parse_line(serial_queue.get_nowait(), sensor_data)
 
-    w.canvas.delete(
-        "line", "circle", "txt", "txt2", "circle_animation", "bar"
-    )  # czyści tylko tagowane elementy, nie cały canvas
+    w.canvas.delete("line", "circle", "txt", "txt2", "circle_animation", "bar")
     w.bar_animation(
         (500, 150),
         (700, 150),
@@ -209,12 +290,10 @@ def update():
         max_value=1050,
     )
     w.draw_animation((200, 250), TEMP_CIRCLE_RAD + 10, sensor_data.temp)
-    root.after(
-        10, update
-    )  # zamiast while+sleep — planuje następne wywołanie za 10ms przez event loop
+    root.after(10, update)
 
 
 # daemon=True — wątek kończy się automatycznie gdy zamkniesz okno (jak setDaemon(true) w Javie)
 threading.Thread(target=serial_reader, args=(serial_queue,), daemon=True).start()
 root.after(10, update)
-root.mainloop()  # przekazuje kontrolę do event loop tkinter — odpowiednik SwingUtilities w Javie
+root.mainloop()

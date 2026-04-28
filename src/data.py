@@ -8,7 +8,7 @@ from pathlib import Path
 def initalize(path: str) -> None:
     with sqlite3.connect(path) as con:
         con.execute(
-            "CREATE TABLE IF NOT EXISTS dane (temperatura, cisnienie, wilgotnosc)"
+            "CREATE TABLE IF NOT EXISTS dane (temperatura REAL, cisnienie REAL, wilgotnosc INTEGER, data_pomiaru TEXT)"
         )
         con.commit()
 
@@ -18,10 +18,10 @@ def get_con(path: str):
 
 
 def put_data(db: sqlite3.Connection, data: data_structs.Struct):
-    dane = data.model_dump(exclude_none=True).values()
+    dane = data.model_dump(exclude_none=True)
     data_pomiaru = datetime.datetime.now().isoformat()
     db.execute(
-        "INSERT INTO dane (temperatura, wilgotnosc, cisnienie, data_pomiaru) with (?, ?, ?, ?)",
+        "INSERT INTO dane (temperatura, cisnienie, wilgotnosc, data_pomiaru) VALUES (?, ?, ?, ?)",
         (dane["temperatura"], dane["cisnienie"], dane["wilgotnosc"], data_pomiaru),
     )
     db.commit()

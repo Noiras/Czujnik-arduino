@@ -1,5 +1,16 @@
 {
     "db_path": "data/data.db",
     "com_port": "COM5",
-    "baud_rate": 9600
+    "baud_rate": 9600,
+    "save_button": {
+        "text": "Zapisz pomiar",
+        "color": "#8B0000",
+        "color_active": "#5C0000",
+        "text_color": "#FFFFFF",
+        "width": 180,
+        "height": 50,
+        "radius": 20,
+        "font_family": "Cascadia Mono",
+        "font_size": 14
+    }
 }

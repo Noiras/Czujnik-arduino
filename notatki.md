@@ -46,3 +46,103 @@ px, py = progress  # unpack przed użyciem w canvas
 | `args=(x)` w `Thread` — to nie tuple | `args=(x,)` — przecinek obowiązkowy |
 | Mieszanie `for i in range(...)` z ręcznym licznikiem | Używaj `i`, wyrzuć osobną zmienną |
 | `simulated_temp` rośnie kwadratowo gdy `+=` z rosnącą wartością | Użyj przypisania: `simulated_temp = i * (TEMP_MAX / 100)` |
+
+---
+
+## Sesja 2026-04-28 — SQLite, Pydantic, config, RoundedButton
+
+### Pydantic v2 — Optional bez domyślnej wartości
+
+```python
+# źle — Pydantic v2 nadal wymaga podania pola
+temperatura: Optional[float]
+
+# dobrze
+temperatura: Optional[float] = None
+wilgotnosc: Optional[int] = Field(default=None, ge=0, le=100)
+```
+
+### SQLite — typowe błędy składni
+
+```python
+# błędna składnia INSERT
+"INSERT INTO dane (?, ?, ?) with data=?"
+
+# poprawnie
+"INSERT INTO dane (temperatura, cisnienie, wilgotnosc, data_pomiaru) VALUES (?, ?, ?, ?)"
+
+# błędna składnia SELECT
+"SELECT * FROM dane WITH data=?"
+
+# poprawnie
+"SELECT * FROM dane WHERE data_pomiaru=?"
+```
+
+### sqlite3.Row jako row_factory — `**dict(row)`
+
+```python
+db.row_factory = sqlite3.Row
+rows = db.execute("SELECT * FROM dane WHERE data_pomiaru=?", (data,)).fetchall()
+return [data_structs.StructUpdate(**dict(row)) for row in rows]
+```
+
+`sqlite3.Row` pozwala na `dict(row)` → słownik z nazwami kolumn jako kluczami.  
+Bez tego `fetchall()` zwraca tuple — nie można ich rozpakować przez `**`.
+
+### Config z zagnieżdżonym modelem Pydantic
+
+```python
+class ButtonConfig(BaseModel):
+    color: str
+    color_active: str
+    ...
+
+class Config(BaseModel):
+    db_path: Path
+    save_button: ButtonConfig   # zagnieżdżony model — Pydantic waliduje rekurencyjnie
+```
+
+JSON z zagnieżdżonym obiektem jest automatycznie parsowany do `ButtonConfig`.
+
+### RoundedButton — zaokrąglony prostokąt na Canvas
+
+`create_polygon(points, smooth=True)` — B-spline przez 12 punktów (po 3 na narożnik):
+- dwa punkty wzdłuż krawędzi w odległości `r` od narożnika → definiują prostą część
+- sam narożnik → punkt kontrolny B-spline, przyciąga krzywą ale jej nie dotyka
+
+```python
+@staticmethod
+def _make_points(x, y, w, h, r):
+    return [
+        x+r, y,    x+w-r, y,
+        x+w, y,    x+w, y+r,
+        x+w, y+h-r, x+w, y+h,
+        x+w-r, y+h, x+r, y+h,
+        x, y+h,    x, y+h-r,
+        x, y+r,    x, y,
+    ]
+```
+
+Zmiana koloru przy kliknięciu — `itemconfig`:
+```python
+def _on_press(self, _):
+    self._canvas.itemconfig(self._rect, fill=self._color_active)
+
+def _on_release(self, _):
+    self._canvas.itemconfig(self._rect, fill=self._color)
+    self._command()
+```
+
+### Osadzanie widgetu w Canvas — `create_window`
+
+```python
+# parent RoundedButton musi być canvas (nie Frame) w którym go osadzasz
+self.save_btn = RoundedButton(self.canvas, cfg.save_button, on_save)
+
+# window= obowiązkowy jako keyword argument
+self.canvas.create_window(400, 500, window=self.save_btn._canvas)
+```
+
+Pułapki `create_window`:
+- widget musi być dzieckiem tego samego canvasa — inaczej `TclError`
+- trzeci pozycyjny argument to `cnf` (dict opcji), nie widget — `window=` jest wymagane
