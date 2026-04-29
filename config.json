@@ -12,5 +12,16 @@
         "radius": 20,
         "font_family": "Cascadia Mono",
         "font_size": 14
+    },
+    "output_button": {
+        "text": "Pobierz dane",
+        "color": "#2E7D32",
+        "color_active": "#1B5E20",
+        "text_color": "#FFFFFF",
+        "width": 180,
+        "height": 50,
+        "radius": 20,
+        "font_family": "Cascadia Mono",
+        "font_size": 14
     }
 }

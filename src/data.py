@@ -27,7 +27,12 @@ def put_data(db: sqlite3.Connection, data: data_structs.Struct):
     db.commit()
 
 
-# struct update musi miec datę wiec problem z glowy
+def get_all(db: sqlite3.Connection) -> list[data_structs.StructUpdate]:
+    db.row_factory = sqlite3.Row
+    rows = db.execute("SELECT * FROM dane").fetchall()
+    return [data_structs.StructUpdate(**dict(r)) for r in rows]
+
+
 def get_data(
     db: sqlite3.Connection, struct: data_structs.StructUpdate
 ) -> list[data_structs.Struct]:

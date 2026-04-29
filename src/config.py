@@ -20,6 +20,7 @@ class Config(BaseModel):
     com_port: str
     baud_rate: int
     save_button: ButtonConfig
+    output_button: ButtonConfig
 
 
 def load_config(path: str = "config.json") -> Config:

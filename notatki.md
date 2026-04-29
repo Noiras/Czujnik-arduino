@@ -146,3 +146,105 @@ self.canvas.create_window(400, 500, window=self.save_btn._canvas)
 Pułapki `create_window`:
 - widget musi być dzieckiem tego samego canvasa — inaczej `TclError`
 - trzeci pozycyjny argument to `cnf` (dict opcji), nie widget — `window=` jest wymagane
+
+---
+
+## Sesja 2026-04-29 — tkinter widgets, dziedziczenie, refaktor struktury
+
+### Każda kontrolka tkinter to widget
+
+`tk.Frame`, `tk.Canvas`, `tk.Button`, `tk.Label` — wszystko dziedziczy z `tk.BaseWidget`.  
+Można przekazać dowolny z nich jako `parent` do innego widgetu.
+
+```python
+w.screen  # tk.Frame — też widget, można go użyć jako parent
+w.canvas  # tk.Canvas — też widget
+```
+
+Hierarchia w projekcie:
+```
+tk.Tk (root)
+├── tk.Frame  (w.screen)  ← kontener
+└── tk.Canvas (w.canvas)  ← płótno do rysowania
+    └── RoundedButton     ← osadzony przez create_window
+```
+
+### Kiedy dziedziczyć po tk.Canvas, a kiedy po tk.Frame
+
+| Base class | Kiedy używać |
+|---|---|
+| `tk.Canvas` | Widget **jest** płótnem — rysuje się sam na sobie. Brak sub-widgetów. |
+| `tk.Frame` | Widget **zawiera** inne widgety (np. ikona + label + przycisk). |
+
+`RoundedButton` jest jednym canvasem z narysowanym kształtem → dziedziczy po `tk.Canvas`.  
+Dziedziczenie po `tk.Frame` + wewnętrzny `tk.Canvas` to zbędna warstwa bez korzyści.
+
+```python
+class RoundedButton(tk.Canvas):
+    def __init__(self, parent, cfg, command):
+        super().__init__(parent, width=cfg.width, height=cfg.height, ...)
+        self._rect = self.create_polygon(...)   # self zamiast self._canvas
+        self.bind("<ButtonPress-1>", ...)       # pack/place/grid odziedziczone
+```
+
+### Trzy metody layoutu — pack / grid / place
+
+```python
+widget.pack(side="bottom", pady=20)          # stackuje w linii
+widget.grid(row=2, column=0, padx=10)        # siatka
+widget.place(x=300, y=400)                   # absolutne koordynaty
+widget.place(relx=0.5, rely=0.9, anchor="center")  # relatywne (0.0–1.0)
+```
+
+`anchor` — który punkt widgetu trafia na podane koordynaty:  
+`"nw"` (lewy-górny, domyślny) | `"center"` | `"n"`, `"s"`, `"e"`, `"w"`, `"ne"`, `"se"`, `"sw"`
+
+### Osadzanie widgetu na Canvas — create_window (poprawiony przykład)
+
+```python
+button = RoundedButton(w.canvas, cfg=config.save_button, command=save_to_db)
+w.canvas.create_window(400, 700, window=button, anchor="center")
+# x=400, y=700 to koordynaty na canvasie
+# widget musi być dzieckiem tego canvasa (parent=w.canvas)
+```
+
+Używaj `create_window` gdy chcesz precyzyjnie pozycjonować widget **wewnątrz canvasa**  
+— `pack/place` pozycjonuje względem parenta-kontenera (Frame/root), nie canvasa.
+
+### Circular imports — rozwiązanie przez klasę AppManager
+
+Problem: `main.py` importuje funkcje z `app_manager.py`, a funkcje potrzebują `sensor_data`/`con` z `main.py` → circular import.
+
+Rozwiązanie: dependency injection przez klasę — zależności przekazane w konstruktorze:
+
+```python
+class AppManager:
+    def __init__(self, sensor_data, con, window, config):
+        self.sensor_data = sensor_data
+        self.con = con
+        ...
+
+    def save_to_db(self):          # używa self.sensor_data — bez importu main.py
+        ...
+
+    def serial_reader(self, queue):
+        ...
+```
+
+```python
+# main.py
+manager = AppManager(sensor_data, con, w, config)
+threading.Thread(target=manager.serial_reader, args=(serial_queue,), daemon=True).start()
+button = RoundedButton(..., command=manager.save_to_db)
+```
+
+`app_manager.py` nie importuje nic z `main.py` — zero circular imports.
+
+### Dostęp do opcji widgetu — subscript i cget
+
+```python
+parent["bg"]          # subscript — działa dla Canvas i Frame
+parent.cget("bg")     # metoda — bardziej jawna, równoważna
+```
+
+Obie formy zwracają aktualną wartość opcji konfiguracyjnej widgetu (np. kolor tła).
